@@ -1,0 +1,12 @@
+<context id="TrafficSim" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:noNamespaceSchemaLocation="http://repast.org/scenario/context">
+  	<context id="AgentContext">
+		<projection type="geography" id="AgentGeography"></projection>
+	</context>
+	<context id="StreetContext">
+		<projection type="geography" id="StreetGeography"></projection>
+	</context>
+	<context id="IntersectionContext">
+		<projection type="geography" id="IntersectionGeography"></projection>
+		<projection type="network" id="StreetNetwork"></projection>
+	</context>
+</context>
