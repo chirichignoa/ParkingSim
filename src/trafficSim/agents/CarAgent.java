@@ -62,6 +62,28 @@ public class CarAgent {
 		ArrayList<Intersection> destinationIntersections = this.destination.getIntersections();
 		
 		// Busco el camino mas corto que pueda existir entre la combinacion de las esquinas
+
+// 		double shortestPathLength = Double.MAX_VALUE;
+// 		double pathLength = 0;
+// 		ShortestPath<Intersection> p;
+// 		List<RepastEdge<Intersection>> shortestPath = null;
+// 		for (Junction s : sourceIntersections) {
+// 			for (Junction d : destinationIntersections) {
+// 				p = new ShortestPath<Intersection>(ContextCreator.streetNetwork);
+// 				pathLength = p.getPathLength(s,d);
+// 				if (pathLength < shortestPathLength) {
+// 					shortestPathLength = pathLength;
+// 					shortestPath = p.getPath(s,d);
+// 					routeEndpoints[0] = o;
+// 					routeEndpoints[1] = d;
+// 				}
+// 			}
+// 		}
+
+	// Ahora debo buscar el camino hacia cada una de las intersecciones elegidas
+	// Intersection currentJunction = routeEndpoints[0];
+	// Intersection destJunction = routeEndpoints[1];
+
 	}
 
 	public Street getSource() {
