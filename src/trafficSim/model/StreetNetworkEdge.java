@@ -16,4 +16,8 @@ public class StreetNetworkEdge<T> extends RepastEdge<T>{
 		this.street = street;
 		
 	}
+
+	public Street getStreet() {
+		return this.street;
+	}
 }
