@@ -2,27 +2,42 @@ package trafficSim.main;
 
 import java.io.File;
 import java.io.FileNotFoundException;
+import java.io.IOException;
 import java.net.MalformedURLException;
+import java.net.URL;
+import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.List;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
+import org.apache.commons.lang3.ArrayUtils;
+import org.geotools.data.shapefile.ShapefileDataStore;
+import org.geotools.data.simple.SimpleFeatureIterator;
+import org.geotools.referencing.GeodeticCalculator;
+import org.opengis.feature.simple.SimpleFeature;
+
 import com.vividsolutions.jts.geom.Coordinate;
 import com.vividsolutions.jts.geom.Geometry;
 import com.vividsolutions.jts.geom.GeometryFactory;
+import com.vividsolutions.jts.geom.LineString;
+import com.vividsolutions.jts.geom.MultiLineString;
+import com.vividsolutions.jts.geom.MultiPolygon;
 import com.vividsolutions.jts.geom.Point;
+import com.vividsolutions.jts.geom.Polygon;
 
 import repast.simphony.context.Context;
 import repast.simphony.context.space.gis.GeographyFactoryFinder;
 import repast.simphony.context.space.graph.NetworkBuilder;
 import repast.simphony.dataLoader.ContextBuilder;
+import repast.simphony.gis.util.GeometryUtil;
 import repast.simphony.space.gis.Geography;
 import repast.simphony.space.gis.GeographyParameters;
 import repast.simphony.space.gis.ShapefileLoader;
 import repast.simphony.space.gis.SimpleAdder;
 import repast.simphony.space.graph.Network;
-
+import repast.simphony.space.graph.RepastEdge;
 import trafficSim.agents.CarAgent;
 import trafficSim.contexts.AgentContext;
 import trafficSim.contexts.IntersectionContext;
@@ -50,7 +65,7 @@ public class ContextCreator implements ContextBuilder<Object> {
 	private static Geography<Intersection> intersectionGeography;
 	private static Network<Intersection> streetNetwork;
 
-	private int numAgents = 5;
+	private int numAgents = 1;
 	
 	@Override
 	public Context<Object> build(Context<Object> context) {
@@ -66,10 +81,11 @@ public class ContextCreator implements ContextBuilder<Object> {
 		streetProjection = GeographyFactoryFinder.createGeographyFactory(null).createGeography(
 				"StreetGeography", streetContext,
 				new GeographyParameters<Street>(new SimpleAdder<Street>()));
+		// String roadFile = gisDataDir + "SelectedRoads.shp";
 		String roadFile = gisDataDir + "SelectedRoads.shp";
 		try {
-			readShapefile(Street.class, roadFile, streetProjection, streetContext);
-		} catch (MalformedURLException | FileNotFoundException e) {
+			loadFeatures(roadFile, streetContext, streetProjection);
+		} catch (Exception e) {
 			LOGGER.log(Level.SEVERE, "", e);
 			return null;
 		}
@@ -81,12 +97,14 @@ public class ContextCreator implements ContextBuilder<Object> {
 				"IntersectionGeography", intersectionContext,
 				new GeographyParameters<Intersection>(new SimpleAdder<Intersection>()));
 		
-		NetworkBuilder<Intersection> builder = new NetworkBuilder<>("StreetNetwork", intersectionContext, false);
+		NetworkBuilder<Intersection> builder = new NetworkBuilder<>("StreetNetwork", intersectionContext, true);
 		builder.setEdgeCreator(new NetworkdEdgeCreator<Intersection>());
 		streetNetwork = builder.buildNetwork();
 		//build RoadNetwork
 		buildRoadNetwork(streetProjection, intersectionContext, intersectionGeography, streetNetwork);
 		
+//		checkRoadNetwork(streetNetwork);
+				
 		// Create the Agents - context and geograph
 		agentContext = new AgentContext();
 		agentGeography = GeographyFactoryFinder.createGeographyFactory(null).createGeography(
@@ -94,10 +112,10 @@ public class ContextCreator implements ContextBuilder<Object> {
 				new GeographyParameters<CarAgent>(new SimpleAdder<CarAgent>()));
 
 		for(int i = 0; i < this.numAgents; i++) {
-			CarAgent agent = new CarAgent(i);
-			agent.setSource(streetContext.getRandomObject());
+			Street source = streetContext.getRandomObject();
+			CarAgent agent = new CarAgent(i, source);
 			agentContext.add(agent);
-			agentGeography.move(agent, null);
+//			agentGeography.move(agent, null);
 			agentGeography.move(agent, streetProjection.getGeometry(agent.getSource()).getCentroid());
 		}
 		
@@ -108,6 +126,21 @@ public class ContextCreator implements ContextBuilder<Object> {
 		return mainContext;	
 	}
 	
+//	private void checkRoadNetwork(Network<Intersection> streetNetwork) {
+////		Iterable<Intersection> streetIt = streetNetwork.getNodes();
+////		for(Intersection s: streetIt) {
+////			System.out.println(s.toString());
+////			System.out.println(streetNetwork.getAdjacent(s));
+////			
+////		}
+//		Iterable<RepastEdge<Intersection>> edges = streetNetwork.getEdges();
+//		for(RepastEdge<Intersection> e : edges) {
+//			System.out.println("Source => " + e.getSource());
+//			System.out.println("Target => " + e.getTarget());
+//			System.out.println("IsDirected => " + e.isDirected());
+//		}
+//	}
+	
 	private void buildRoadNetwork(Geography<Street> roadProjection, Context<Intersection> intersectionContext,
 			Geography<Intersection> intersectionGeography, Network<Intersection> streetNetwork) {
 		// Para poder crear lineas y puntos desde la interseccion de las calles
@@ -117,34 +150,62 @@ public class ContextCreator implements ContextBuilder<Object> {
 		
 		Iterable<Street> roadIt = roadProjection.getAllObjects();
 		for (Street street : roadIt) {
-			Geometry geo = roadProjection.getGeometry(street);
-			Coordinate c1 = geo.getCoordinates()[0]; // Coord 1
-			Coordinate c2 = geo.getCoordinates()[geo.getNumPoints() - 1]; //Coord 2
-			
-			Intersection inter1 = createIntersection(intersectionContext, intersectionGeography, c1, coordMap);
-			Intersection inter2 = createIntersection(intersectionContext, intersectionGeography, c2, coordMap);
-			
-			//Asigno las intersecciones a la calle
-			street.addIntersection(inter1);
-			street.addIntersection(inter2);
-			//Asigno la calle a cada una de las intersecciones
-			inter1.addRoad(street);
-			inter2.addRoad(street);
-			
-			//Genero el arco en la red entre ambas intersecciones con el peso de la longitud de la calle
-			StreetNetworkEdge<Intersection> edge = new StreetNetworkEdge<Intersection>(inter1, inter2, false, geo.getLength());
-			//Asigno el arco a la calle y la calle al arc
-			street.setEdge(edge);
-			edge.setStreet(street);
-			
-			// Finalmente añado el arco a la red
-			if (!streetNetwork.containsEdge(edge)) {
-				streetNetwork.addEdge(edge);
-			} 
-		};
-		
+			if(!street.getName().equals("")) {
+
+				generateIntersections(street, coordMap);
+			}
+		}
+		System.out.println("coordMap -> " + coordMap.size());
 	}
 	
+	private void generateIntersections(Street street, HashMap<Coordinate, Intersection> coordMap) {
+		Intersection previousIntersection = null;
+		Coordinate[] coords = street.getCoords();
+		// Iterate over the street coords, creating a interection for each one
+		if(street.getDirection().equals("S") || street.getDirection().equals("O")) {
+			ArrayUtils.reverse(coords);
+		}
+		for(Coordinate c: coords) {
+			Intersection intersection = createIntersection(intersectionContext, intersectionGeography, c, coordMap);
+			street.addIntersection(intersection);
+			intersection.addRoad(street);
+			if(previousIntersection != null) {
+				//Chequear para que lado va la calle
+				// TODO: hacer lo del sentido
+				StreetNetworkEdge<Intersection> edge = new StreetNetworkEdge<>(previousIntersection,
+																				intersection,
+																				street.getOneWay().equals("T"),
+																				calculateDistance(previousIntersection,intersection));
+				edge.setStreet(street);
+				intersection.addPrevious(previousIntersection);
+				previousIntersection.addNext(intersection);
+				// Finalmente añado el arco a la red
+				if (!streetNetwork.containsEdge(edge)) {
+					streetNetwork.addEdge(edge);
+				} 
+				if(street.getOneWay().equals("F")) {
+					edge = new StreetNetworkEdge<>(intersection,
+							previousIntersection,
+							street.getOneWay().equals("T"),
+							calculateDistance(intersection, previousIntersection));
+					edge.setStreet(street);
+					if (!streetNetwork.containsEdge(edge)) {
+						streetNetwork.addEdge(edge);
+					} 
+				}
+				
+			}
+			previousIntersection = intersection;
+		}
+	}
+	
+	private double calculateDistance(Intersection previousIntersection, Intersection intersection) {
+		GeodeticCalculator calculator = new GeodeticCalculator(ContextCreator.getStreetProjection().getCRS());
+		calculator.setStartingGeographicPoint(previousIntersection.getCoord().x, previousIntersection.getCoord().y);
+		calculator.setDestinationGeographicPoint(intersection.getCoord().x, intersection.getCoord().y);
+		return Math.abs(calculator.getOrthodromicDistance());
+	}
+
 	public Intersection createIntersection(Context<Intersection> intersectionContext,
 			Geography<Intersection> intersectionGeography, Coordinate coord, HashMap<Coordinate, Intersection> coordMap ) {
 		if (coordMap.containsKey(coord)) {
@@ -153,30 +214,82 @@ public class ContextCreator implements ContextBuilder<Object> {
 		} else { // Junction does not exit
 			Intersection intersection = new Intersection();
 			GeometryFactory geomFac = new GeometryFactory();
-			intersection.setCoords(coord);
+			intersection.setCoord(coord);
 			intersectionContext.add(intersection);
+//			intersection.setNext(null);
 			coordMap.put(coord, intersection);
 			Point p1 = geomFac.createPoint(coord);
 			intersectionGeography.move(intersection, p1);
 			return intersection;
 		}
 	}
+	
+	private List<SimpleFeature> loadFeaturesFromShapefile(String filename){
+		System.out.println("Extracting features");
+		URL url = null;
+		try {
+			url = new File(filename).toURL();
+		} catch (MalformedURLException e1) {
+			e1.printStackTrace();
+		}
 
-	public <T extends FixedGeography> void readShapefile(Class<T> cl, String shapefileLocation, Geography<T> geog, Context<T> context) 
-			throws MalformedURLException, FileNotFoundException {
-		File shapefile = null;
-		ShapefileLoader<T> loader = null;
-		shapefile = new File(shapefileLocation);
-		if (!shapefile.exists()) {
-			throw new FileNotFoundException("Could not find the given shapefile: " + shapefile.getAbsolutePath());
+		List<SimpleFeature> features = new ArrayList<SimpleFeature>();
+		
+		// Try to load the shapefile
+		SimpleFeatureIterator fiter = null;
+		ShapefileDataStore store = null;
+		store = new ShapefileDataStore(url);
+
+		try {
+			fiter = store.getFeatureSource().getFeatures().features();
+
+			while(fiter.hasNext()){
+				features.add(fiter.next());
+			}
+		} catch (IOException e) {
+			e.printStackTrace();
 		}
-		loader = new ShapefileLoader<T>(cl, shapefile.toURI().toURL(), geog, context);
-		while (loader.hasNext()) {
-			loader.next();
+		finally{
+			fiter.close();
+			store.dispose();
 		}
-		for (T obj : context.getObjects(cl)) {
-			obj.setCoords(geog.getGeometry(obj).getCentroid().getCoordinate());
-		}
+		
+		return features;
+	}
+	
+	/**
+	 * Loads features from the specified shapefile.  The appropriate type of agents
+	 * will be created depending on the geometry type in the shapefile
+	 * 
+	 * @param filename the name of the shapefile from which to load agents
+	 * @param context the context
+	 * @param geography the geography
+	 */
+	private void loadFeatures (String filename, Context context, Geography geography){
+
+		List<SimpleFeature> features = loadFeaturesFromShapefile(filename);
+		String name;
+		// For each feature in the file
+		for (SimpleFeature feature : features){
+			Geometry geom = (Geometry)feature.getDefaultGeometry();
+
+			if (!geom.isValid()){
+				System.out.println("Invalid geometry: " + feature.getID());
+			}
+			MultiLineString line = (MultiLineString)feature.getDefaultGeometry();
+			geom = (LineString)line.getGeometryN(0);
+			Coordinate[] coords = line.getCoordinates();
+			name = (String)feature.getAttribute("name");
+			if(!name.equals("")) {
+				Street street = new Street(Integer.parseInt((String)feature.getAttribute("osm_id")));
+				street.setName(name);
+				street.setOneWay((String)feature.getAttribute("oneway"));
+				street.setDirection((String)feature.getAttribute("direction"));
+				street.setCoords(coords);
+				context.add(street);
+				geography.move(street, geom);
+			}
+		}				
 	}
 	
 	public static Context<Object> getMainContext() {

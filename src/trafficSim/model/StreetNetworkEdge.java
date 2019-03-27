@@ -20,4 +20,9 @@ public class StreetNetworkEdge<T> extends RepastEdge<T>{
 	public Street getStreet() {
 		return this.street;
 	}
+	
+	@Override
+	public String toString() {
+		return super.toString();
+	}
 }
